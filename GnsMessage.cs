@@ -134,7 +134,16 @@ $GPGSV,2,2,05,32,,,34,1*67
         #endregion
 
         #region Types
-        // FAA Mode Indicator A = Autonomous mode D = Differential Mode E = Estimated (dead-reckoning) mode F = RTK Float mode M = Manual Input Mode N = Data Not Valid P = Precise (4.00 and later) R = RTK Integer mode S = Simulated Mode
+        // FAA Mode Indicator
+        // A = Autonomous mode
+        // D = Differential Mode
+        // E = Estimated (dead-reckoning) mode
+        // F = RTK Float mode
+        // M = Manual Input Mode
+        // N = Data Not Valid
+        // P = Precise (4.00 and later)
+        // R = RTK Integer mode
+        // S = Simulated Mode
         // fields must be empty when no data for it - some GPS units zero these out
         // Date and time in GPS is represented as number of weeks from the start of zero second of 6 January 1980, plus number of seconds into the week. 
         public enum FaaMode
@@ -152,6 +161,52 @@ $GPGSV,2,2,05,32,,,34,1*67
 
         #endregion
     }
+
+
+    // VTK - Track made good and ground speed
+    //          1  2  3  4  5  6  7  8 9
+    //          |  |  |  |  |  |  |  | |
+    //  $--VTG,x.x,T,x.x,M,x.x,N,x.x,K*hh<CR><LF>
+    // NMEA 2.3:
+    //  $--VTG,x.x,T,x.x,M,x.x,N,x.x,K,m*hh<CR><LF>
+    public class VtgGnsMessage : GnsMessage
+    {
+
+        public double CourseOverGroundDegreesTrue; // 0-359
+        public double CourseOverGroundDegreesMagnetic; // 0-359
+        public double SpeedOverGroundKnots; //0 to 99
+        public double SpeedOverGroundKmPerHour; // 0 to 99
+        public FaaMode? FaaMode;
+
+        public static bool TryParse(string fieldsText, out VtgGnsMessage message)
+        {
+            message = null;
+            if (String.IsNullOrEmpty(fieldsText))
+                return false;
+            try
+            {
+                var words = fieldsText.Split(',');
+                if (words.Length != 9)
+                    return false;
+
+                message = new VtgGnsMessage
+                {
+                    CourseOverGroundDegreesTrue = ParseDouble(words[0]),
+                    CourseOverGroundDegreesMagnetic= ParseDouble(words[2]),
+                    SpeedOverGroundKnots= Double.Parse(words[4]),
+                    SpeedOverGroundKmPerHour= Double.Parse(words[6]),
+                    FaaMode = ParseFaaMode(words[8])
+                };
+                // todo - check faa mode in 9
+            }
+            catch (Exception ex)
+            {
+                return false;
+            }
+            return true;
+        }
+    }
+
 
     // GLL - Geographic Position - Latitude/Longitude
     // 	  1       2 3        4 5         6 7   8

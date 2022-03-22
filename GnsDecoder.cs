@@ -115,6 +115,10 @@ namespace Lomont.Gps
                     gnsMessageType = GnsMessageType.GSA;
                     break;
                 case "VTG": // VTG - Track made good and Ground speed
+                    // $GNVTG,42.06,T,,M,2.264,N,4.194,K,D*1C 
+                    if (!VtgGnsMessage.TryParse(fieldsText, out var vtgMessage))
+                        return null;
+                    gnsMessage = vtgMessage;
                     gnsMessageType = GnsMessageType.VTG;
                     break;
                 case "GLL": // GLL - Geographic Position - Latitude/Longitude
