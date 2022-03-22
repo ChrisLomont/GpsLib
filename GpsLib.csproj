@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <RootNamespace>Lomont.Gps</RootNamespace>
+    <AssemblyName>Lomont.GpsLib</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LomontSharp" Version="0.4.0" />
+  </ItemGroup>
+
+</Project>
