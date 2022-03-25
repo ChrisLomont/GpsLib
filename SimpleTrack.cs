@@ -1,26 +1,53 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading;
 
 namespace Lomont.Gps
 {
     // keep track of GPS path items of interest
     // merges info from a few messages to get the best track possible
-    public class SimpleTrack
+    public class SimpleTrack : IEnumerable<SimpleTrack.Node>
     {
 
+        /// <summary>
+        /// Groups various messages in the stream into a nicer format
+        /// </summary>
+        /// <param name="Position"></param>
+        /// <param name="Mode"></param>
+        /// <param name="Utc"></param>
+        /// <param name="Valid"></param>
+        /// <param name="GroundSpeedKnots"></param>
+        /// <param name="System"></param>
         public record Node(Location Position, GnsMessage.FaaMode Mode, DateTime Utc, bool Valid, double GroundSpeedKnots, GnsSystem System);
-
-        public List<Node> Nodes { get; } = new();
 
 
         /// <summary>
         /// Load messages
         /// </summary>
         /// <param name="messages"></param>
-        public void FromMessages(IList<Message> messages)
+        public SimpleTrack(IEnumerable<Message> messages)
+        {
+            this.messages = messages;
+        }
+
+        /// <summary>
+        /// Load from a file
+        /// </summary>
+        /// <param name="filename"></param>
+        public SimpleTrack(string filename)
+        {
+            messages = new GnsDecoder.MessageEnumerator(
+                File.ReadLines(filename)
+                );
+        }
+
+        IEnumerable<Message> messages;
+
+        public IEnumerator<SimpleTrack.Node> GetEnumerator()
         {
             /* most common messages, relative frequencies from a sample
              * 760 GSV - satellites in view
@@ -44,6 +71,7 @@ namespace Lomont.Gps
              *
              */
 
+            SimpleTrack.Node node = null;
 
 
 #if DEBUG
@@ -55,6 +83,11 @@ namespace Lomont.Gps
             {
 #if DEBUG
                 var gns = msg as GnsMessage;
+                if (gns == null)
+                {
+                    Trace.TraceError($"Invalid GNS message");
+                    continue;
+                }
                 var name = gns.GnsMessageType.ToString();
                 if (!counts.ContainsKey(name))
                     counts.Add(name, 0);
@@ -65,22 +98,27 @@ namespace Lomont.Gps
                 {
                     // RMC has no height info.... get from other message soon
                     Trace.Assert(rmc.FaaMode.HasValue); // todo - test? what if happens? ignore?
-                    Nodes.Add(new(rmc.position, rmc.FaaMode.Value, rmc.Utc, rmc.Valid, rmc.groundSpeedKnots, GnsSystem.UNKNOWN));
+                    if (node != null)
+                        yield return node;
+
+                    node =
+                        new(rmc.position, rmc.FaaMode.Value, rmc.Utc, rmc.Valid, rmc.groundSpeedKnots,
+                        GnsSystem.UNKNOWN);
                 }
                 else if (msg is GgaGnsMessage gga)
                 {
                     // GGA does not have year, month, day, field
-                    if (Nodes.Count > 0)
+                    if (node != null)
                     {
                         // RMC,hhmmss.ss
                         // GGA,hhmmss.ss
-                        var n = Nodes.Last();
+                        var n = node;
                         Check1(gga.position, n.Position, false);
                         Check2(gga.Utc, n.Utc, false);
                         Check4(gga.GpsFixQuality, n.Mode);
 
                         // put in height
-                        Nodes[Nodes.Count - 1] = n with { Position = new Location(n.Position.Latitude, n.Position.Longitude, gga.position.Height)};
+                        node = n with { Position = new Location(n.Position.Latitude, n.Position.Longitude, gga.position.Height) };
 
                     }
                     //gga.position;
@@ -97,16 +135,16 @@ namespace Lomont.Gps
                 {
                     // GLL does not have year, month, day, field
 
-                    if (Nodes.Count > 0)
+                    if (node != null)
                     {
-                        var n = Nodes.Last();
+                        var n = node;
                         Check1(gll.position, n.Position, false);
                         Check2(gll.Utc, n.Utc, false);
                         Check3(gll.Valid, n.Valid);
                         Trace.Assert(gll.FaaMode.HasValue);
                         Check5(gll.FaaMode.Value, n.Mode);
 
-                        Nodes[Nodes.Count - 1] = n with {System = gll.GnsSystem};
+                        node = n with { System = gll.GnsSystem };
 
                     }
 
@@ -118,21 +156,20 @@ namespace Lomont.Gps
                 }
                 else if (msg is VtgGnsMessage vtg)
                 {
-                    if (Nodes.Count > 0)
+                    if (node != null)
                     {
-                        var n = Nodes.Last();
+                        var n = node;
                         Trace.Assert(vtg.FaaMode.HasValue);
                         Check5(vtg.FaaMode.Value, n.Mode);
                         Check6(vtg.SpeedOverGroundKnots, n.GroundSpeedKnots);
                     }
-                    
+
                     // for some reason, the ratio of speeds is slightly different
                     //Trace.WriteLine($"VTG {vtg.SpeedOverGroundKnots/vtg.SpeedOverGroundKmPerHour}");
 
                 }
             }
-            
-            // todo - sanity check, remove missing items, check all fields make sense
+
 
 #if DEBUG
             foreach (var p in counts.OrderBy(p => p.Value))
@@ -140,13 +177,19 @@ namespace Lomont.Gps
                 Trace.WriteLine($"  {p.Value}: {p.Key}");
             }
 #endif
+            // todo - sanity check, remove missing items, check all fields make sense
+            if (node != null)
+                yield return node; // last node
+
+            node = null;
 
             //foreach (var p in Nodes)
             //{
             //    if (p.Position.Height != 0)
             //        Trace.WriteLine(p.Position.Height);
             //}
-
+            
+            #region Helpers
 
             void Check1(Location l1, Location l2, bool compareHeight = true)
             {
@@ -162,7 +205,7 @@ namespace Lomont.Gps
                 {
                     t1 = t1.AddYears(t2.Year - t1.Year);
                     t1 = t1.AddDays(t2.Day - t1.Day);
-                    t1 = t1.AddMonths(t2.Month- t1.Month);
+                    t1 = t1.AddMonths(t2.Month - t1.Month);
                 }
 
                 var d = t1 - t2;
@@ -177,13 +220,13 @@ namespace Lomont.Gps
                 if (
                     (t1 == GnsMessage.FaaMode.Estimated && t2 == GpsFixQuality.Estimated) ||
                     (t1 == GnsMessage.FaaMode.Differential && t2 == GpsFixQuality.Differential) ||
-                    (t1 == GnsMessage.FaaMode.RtkInteger && t2 == GpsFixQuality.RealTimeKinematic) || 
+                    (t1 == GnsMessage.FaaMode.RtkInteger && t2 == GpsFixQuality.RealTimeKinematic) ||
                     (t1 == GnsMessage.FaaMode.RtkFloat && t2 == GpsFixQuality.FloatRTK)
                     )
                 {
                     return;
                 }
-                Trace.Assert(false,$"Uncompared modes {t1} and {t2}");
+                Trace.Assert(false, $"Uncompared modes {t1} and {t2}");
                 /*
                  * modes, * says mode in opposite item too
                  * FAA mode - GLL message
@@ -224,20 +267,14 @@ namespace Lomont.Gps
 
             void Check6(double v1, double v2)
             {
-                Trace.Assert(v1==v2); // check bitwise!
+                Trace.Assert(v1 == v2); // check bitwise!
             }
+            #endregion
         }
 
-        /// <summary>
-        /// Load from a file
-        /// </summary>
-        /// <param name="filename"></param>
-        public void ReadFile(string filename)
+        IEnumerator IEnumerable.GetEnumerator()
         {
-            List<Message> messages = new();
-            var (successful, failed) = GnsDecoder.Parse(File.ReadLines(filename), messages);
-            Trace.WriteLine($"GPS message reader: {successful} succeeded, {failed} failed");
-            FromMessages(messages);
+            return GetEnumerator();
         }
     }
 }

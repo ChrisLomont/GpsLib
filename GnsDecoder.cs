@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -7,38 +8,12 @@ namespace Lomont.Gps
 {
     public static class GnsDecoder
     {
+        
         public static (int successful, int failed) Parse(IEnumerable<string> lines, List<Message> messages)
         {
-            int successful = 0, failed = 0, lineCount = 0;
-            bool seekLine = true;
-            foreach (var line1 in lines)
-            {
-                var line = line1 + "\r\n"; // endlines were stripped, pass into decoder
-                if (seekLine)
-                { // skip any initial noise, get to first $
-                    if (line.Contains("$"))
-                        line = line.Substring(line.IndexOf('$'));
-                    if (!line.StartsWith("$"))
-                        continue;
-                    seekLine = false;
-                }
-
-                ++lineCount;
-                var message = TryParse(line);
-                if (message != null)
-                {
-                    messages.Add(message);
-                    successful++;
-                }
-                else
-                {
-                    // todo - last line sometimes clipped - ignore? warn?
-                    Trace.TraceError($"Error parsing GNS line {lineCount}:{line}");
-                    failed++;
-                }
-            }
-            return (successful, failed);
-
+            var m = new MessageEnumerator(lines);
+            messages.AddRange(m);
+            return (m.Successful, m.Failed);
         }
 
         public static (int successful, int failed) Parse(string filename, List<Message> messages)
@@ -158,6 +133,68 @@ namespace Lomont.Gps
 
             return gnsMessage;
         }
+
+        public class MessageEnumerator : IEnumerable<Message>
+        {
+            private IEnumerable<string> lines;
+
+            /// <summary>
+            /// Message lines that parsed correctly
+            /// </summary>
+            public int Successful { get; private set; }
+
+            /// <summary>
+            /// Message lines that didn't parsed correctly
+            /// </summary>
+            public int Failed { get; private set; }
+
+            /// <summary>
+            /// Call with an enumerable of the text lines of the GNS messages
+            /// </summary>
+            /// <param name="lines"></param>
+            public MessageEnumerator(IEnumerable<string> lines)
+            {
+                this.lines = lines;
+
+            }
+            public IEnumerator<Message> GetEnumerator()
+            {
+                int lineCount = 0;
+                bool seekLine = true;
+                foreach (var line1 in lines)
+                {
+                    var line = line1 + "\r\n"; // endlines were stripped, pass into decoder
+                    if (seekLine)
+                    { // skip any initial noise, get to first $
+                        if (line.Contains("$"))
+                            line = line.Substring(line.IndexOf('$'));
+                        if (!line.StartsWith("$"))
+                            continue;
+                        seekLine = false;
+                    }
+
+                    ++lineCount;
+                    var message = TryParse(line);
+                    if (message != null)
+                    {
+                        Successful++;
+                        yield return message;
+                    }
+                    else
+                    {
+                        Failed++;
+                        // todo - last line sometimes clipped - ignore? warn?
+                        Trace.TraceError($"Error parsing GNS line {lineCount}:{line}");
+                    }
+                }
+            }
+
+            IEnumerator IEnumerable.GetEnumerator()
+            {
+                return GetEnumerator();
+            }
+        }
+
 
         static bool TryParseChecksum(string text, out int readChecksum)
         {
