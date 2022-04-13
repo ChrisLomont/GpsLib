@@ -28,6 +28,10 @@ $GPGSV,2,2,05,32,,,34,1*67
          *
          */
 
+        // GPS precise point positioning https://gpsd.gitlab.io/gpsd/ppp-howto.html
+        // This is not RTK, so less useful for those cases
+        // says ZED-F9P should get 1cm in lat,long,height
+
         public string Text,Addr;
         public List<string> Fields;
         public GnsSystem GnsSystem = GnsSystem.UNKNOWN;

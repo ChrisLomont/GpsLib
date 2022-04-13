@@ -1,0 +1,84 @@
+﻿Some notes on GPS messages
+Good ref https://gpsd.gitlab.io/gpsd/NMEA.html
+   "most sensors emit only RMC, GSA, GSV, GLL, VTG, and (rarely) ZDA. 
+    Newer ones conforming to NMEA 3.x may emit GBS"
+
+Stuff only tested on ublox ZED-F9P rtk gps chip
+
+Accuracy of position indicators:
+FAA Mode (NMEA 2.3 and later) - stuff needed by FAA
+    A = Autonomous mode - satellite system used in non-differentail mode in opisition fix
+    C = Quectel querk "Caution"        
+    D = Differential Mode - satellite used in differential mode in poisition fix
+    E = Estimated (dead-reckoning) mode
+    F = RTK Float mode (not as accurate as RTK Integer - approx 6" over 1/2 mile error?)
+    M = Manual Input Mode
+    N = Data Not Valid
+    P = Precise (4.00 and later) - satellite used in precision mode (no deliberate degradation) and higher resolution code (P-code) used to compute fix
+    R = RTK Integer mode
+    S = Simulated Mode
+    Q = Quectel Querk "Unsafe"        
+
+Integer rtk and float RTK refer to the ambiguity in phase during an algorithm - integer means the phase is an integer multiple, which is more precise, and float means non-integer phase resolution.
+
+Date and time in GPS is represented as number of weeks from the start of zero second of 6 January 1980, plus number of seconds into the week. 
+        
+
+
+To get most info for general tracking, several messages are aggregated in this library
+
+RMC message has no height info, but has 
+- time as hhmmss.ss
+- FAA Mode
+- groundspeed in knots
+- magnetic variation (difference between axis North pole and magnetic North)
+
+GGA message has
+- time as hhmmss.ss
+- position (lat, long), # f digits is model dependent
+- GPS quality:
+- # of satellites in use 00-12
+- horizontal dilution of precision in meters
+- antenna height above mean sea level for selected geoid in meters
+- geoidal separation (differenc ebetween geoid and wGS-84 elliosoid)
+
+GLL message has
+- position
+- time hhmmss.ss
+- FAA Mode
+
+VTG message has
+- course over ground degrees true
+- course over gound degrees magnetic
+- speed over ground, knots
+- speed over ground, km/hr
+- FAA Mode
+
+
+GSV - Satellites in view. Come in groups, has 
+- # sats
+- IDs of sats
+- elevation, aizjmuth
+- SNR in dB (00-99) of sats
+
+GSA - GPS DOP and active satellites
+- mode
+- id of 12 satellites usedin fix
+- PDOP, HDOP, VDOP
+- system ID
+
+Messages relative counts in a sample
+* 760 GSV - satellites in view
+* 155 GSA - GPS DOP and active satellites
+*  40 GLL - geographic position, 
+*  40 GGA - gps fix data: time, position, fix
+*  40 VTG - track made good - ground speed, course heading, knots, km/hr
+*  40 RMC - recommended min nav info
+
+
+
+FAA Mode
+
+
+
+

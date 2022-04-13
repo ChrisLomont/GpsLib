@@ -4,7 +4,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Threading;
+
+// todo
+// - add # satellites used in fix?
+// - resolve difference in speeds seen? km/hr and land speed knots are not always the same
+// - add heading info?
+
 
 namespace Lomont.Gps
 {
@@ -45,9 +50,9 @@ namespace Lomont.Gps
                 );
         }
 
-        IEnumerable<Message> messages;
+        readonly IEnumerable<Message> messages;
 
-        public IEnumerator<SimpleTrack.Node> GetEnumerator()
+        public IEnumerator<Node> GetEnumerator()
         {
             /* most common messages, relative frequencies from a sample
              * 760 GSV - satellites in view
@@ -71,8 +76,9 @@ namespace Lomont.Gps
              *
              */
 
-            SimpleTrack.Node node = null;
-
+            Node node = null;
+            bool differentialPaired = false; // have not yet seen this
+            bool differentialMissed = false; // have not yet seen this
 
 #if DEBUG
             // debug types
@@ -117,6 +123,9 @@ namespace Lomont.Gps
                         Check2(gga.Utc, n.Utc, false);
                         Check4(gga.GpsFixQuality, n.Mode);
 
+                        // geoid separation varies by location on earth, often around -34m in usa
+                        //Trace.WriteLine($"Geoid: {gga.geoidSeparation} and Ortho: {gga.orthometricHeight}");
+
                         // put in height
                         node = n with { Position = new Location(n.Position.Latitude, n.Position.Longitude, gga.position.Height) };
 
@@ -142,7 +151,7 @@ namespace Lomont.Gps
                         Check2(gll.Utc, n.Utc, false);
                         Check3(gll.Valid, n.Valid);
                         Trace.Assert(gll.FaaMode.HasValue);
-                        Check5(gll.FaaMode.Value, n.Mode);
+                        Check5(gll.FaaMode.Value, n.Mode, "GLL");
 
                         node = n with { System = gll.GnsSystem };
 
@@ -160,7 +169,7 @@ namespace Lomont.Gps
                     {
                         var n = node;
                         Trace.Assert(vtg.FaaMode.HasValue);
-                        Check5(vtg.FaaMode.Value, n.Mode);
+                        Check5(vtg.FaaMode.Value, n.Mode, "VTG");
                         Check6(vtg.SpeedOverGroundKnots, n.GroundSpeedKnots);
                     }
 
@@ -215,6 +224,7 @@ namespace Lomont.Gps
             {
                 Trace.Assert(b1 == b2);
             }
+            
             void Check4(GpsFixQuality t2, GnsMessage.FaaMode t1)
             {
                 if (
@@ -226,45 +236,32 @@ namespace Lomont.Gps
                 {
                     return;
                 }
-                Trace.Assert(false, $"Uncompared modes {t1} and {t2}");
-                /*
-                 * modes, * says mode in opposite item too
-                 * FAA mode - GLL message
-                 *
-                            Autonomous, // A
-                            * Differential, // D
-                            * Estimated, // E dead reckoning
-                            * RtkFloat, // F
-                            * Manual, // M
-                            NotValid, // N
-                            Precise,  // P
-                            RtkInteger,  // R
-                            * Simulated,   // S
-                 */
-                /* GpsFixQuality  - GGA messages
-                    NoFixAvailable = 0,
-                    GPS,
-                    * Differential,
-                    PPS,
-                    RealTimeKinematic = 4,
-                    * FloatRTK = 5,
-                    * Estimated,
-                    * Manual,
-                    * Simulation
-                */
+                Trace.Assert(false, $"FAA modes {t1} and {t2} not compared");
             }
 
-
-            void Check5(GnsMessage.FaaMode t1, GnsMessage.FaaMode t2)
+            void Check5(GnsMessage.FaaMode t1, GnsMessage.FaaMode t2, string msgType)
             {
+                if (t1 == GnsMessage.FaaMode.Differential && t2 == GnsMessage.FaaMode.Differential && !differentialPaired)
+                {
+                    Trace.WriteLine("Double differential seen");
+                    differentialPaired = true;
+                }
+
                 if (t1 != t2)
                 {
                     //Trace.Assert(t1 == t2);
                     // get differential compared to rtk float and rtk integer sometimes
-                    Trace.TraceWarning($"mismatched GPS type {t1} != {t2}");
+                    if (!differentialMissed || (t1 != GnsMessage.FaaMode.Differential && t2 != GnsMessage.FaaMode.Differential))
+                    {
+                        Trace.TraceWarning($"mismatched GPS type {t1} != {t2} from msg {msgType}");
+                    }
+
+                    if (t1 == GnsMessage.FaaMode.Differential || t2 == GnsMessage.FaaMode.Differential)
+                        differentialMissed = true;
                 }
             }
 
+            // check doubles are bitwise exact
             void Check6(double v1, double v2)
             {
                 Trace.Assert(v1 == v2); // check bitwise!
