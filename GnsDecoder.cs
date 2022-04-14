@@ -89,6 +89,18 @@ namespace Lomont.Gps
                 case "GSA": // GPS DOP and active satellites
                     gnsMessageType = GnsMessageType.GSA;
                     break;
+                case "ZDA": // GPS DOP and active satellites
+                    if (!ZdaGnsMessage.TryParse(fieldsText, out var zdaMessage))
+                        return null;
+                    gnsMessage = zdaMessage;
+                    gnsMessageType = GnsMessageType.ZDA;
+                    break;
+                case "DTM": // Datum reference
+                    if (!DtmGnsMessage.TryParse(fieldsText, out var dtmMessage))
+                        return null;
+                    gnsMessage = dtmMessage;
+                    gnsMessageType = GnsMessageType.DTM;
+                    break;
                 case "VTG": // VTG - Track made good and Ground speed
                     // $GNVTG,42.06,T,,M,2.264,N,4.194,K,D*1C 
                     if (!VtgGnsMessage.TryParse(fieldsText, out var vtgMessage))

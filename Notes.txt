@@ -82,3 +82,6 @@ FAA Mode
 
 
 
+
+ZED-F9P increasing sampling rate https://portal.u-blox.com/s/question/0D52p0000AEmJWACQ3/zedf9r-get-30hz-sampling-rate
+

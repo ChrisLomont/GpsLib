@@ -166,6 +166,114 @@ $GPGSV,2,2,05,32,,,34,1*67
         #endregion
     }
 
+    // DTM - Datum Reference
+    //           1  2  3   4  5   6  7  8    9
+    //           |  |  |   |  |   |  |  |    |
+    //  $ --DTM,ref,x,llll,c,llll,c,aaa,ref*hh<CR><LF>     */
+    public class DtmGnsMessage : GnsMessage
+    {
+        // 1. Local datum code
+        // 2. Local datum subcode, may be blank
+        // 3. lat offset (minutes)
+        // 4. N or S
+        // 5. long offset (minutes)
+        // 6. E or W
+        // 7. alt offset in meters
+        // 8. datum name, "W84" = WGS84
+
+        public string datumCode;
+        public string datumSubcode;
+        public double latOffset;
+        public bool latNS;
+        public double lngOffset;
+        public bool latEW;
+        public double altOffset;
+        public string datumName;
+
+
+        public Location Position;
+
+        public static bool TryParse(string fieldsText, out DtmGnsMessage message)
+        {
+            message = null;
+            if (String.IsNullOrEmpty(fieldsText))
+                return false;
+            try
+            {
+                var words = fieldsText.Split(',');
+                if (words.Length != 8)
+                    return false;
+
+
+                message = new DtmGnsMessage
+                {
+                    datumCode = words[0], // W84 common
+                    datumSubcode = words[1], // may be blank
+                    latOffset = Double.Parse(words[2]),
+                    latNS = words[3] == "N", // todo - check is S?
+                    lngOffset = Double.Parse(words[4]),
+                    latEW = words[5] == "E", // todo - check is S?
+                    altOffset = Double.Parse(words[6]),
+                    datumName = words[7], // often W84?
+                };
+            }
+            catch (Exception ex)
+            {
+                return false;
+            }
+
+            return true;
+
+        }
+    }
+
+    // ZDA - Time & Date - UTC, day, month, year and local time zone
+        //        1         2  3  4    5  6  7
+        //        |         |  |  |    |  |  |
+        // $--ZDA,hhmmss.ss,xx,xx,xxxx,xx,xx*hh<CR><LF>
+        public class ZdaGnsMessage : GnsMessage
+    {
+        public DateTime Utc; // UTC time
+
+        // 1. UTC time, possible frac subseconds
+        // 2. day 01-31
+        // 3. month 01-12
+        // 4. year 4 digits
+        // 5. local time description 00 to +- 13
+        // 6. local zone minutes description, 00-59, apply same sign as local time zone
+
+        public static bool TryParse(string fieldsText, out ZdaGnsMessage message)
+        {
+            message = null;
+            if (String.IsNullOrEmpty(fieldsText))
+                return false;
+            try
+            {
+                var words = fieldsText.Split(',');
+                if (words.Length != 6)
+                    return false;
+                var utc = ParseUtc(words[0]);
+                var day   = Int32.Parse(words[1]);
+                var month = Int32.Parse(words[2]);
+                var year  = Int32.Parse(words[3]);
+                var localDeltaHours  = Int32.Parse(words[4]);
+                var localDeltaMinutes = Int32.Parse(words[5]);
+
+                // todo - aggregate local hh::mm also?
+                message = new ZdaGnsMessage
+                {
+                    Utc = new DateTime(year,month,day,utc.Hour, utc.Minute, utc.Second,utc.Millisecond)
+                };
+            }
+            catch (Exception ex)
+            {
+                return false;
+            }
+            return true;
+        }
+
+    }
+
 
     // VTK - Track made good and ground speed
     //          1  2  3  4  5  6  7  8 9
@@ -413,6 +521,9 @@ $GPGSV,2,2,05,32,,,34,1*67
         GLL, // GLL - Geographic Position - Latitude/Longitude
         RMC, // RMC - Recommended Minimum Navigation Information
         GGA, // GGA - Global Positioning System Fix Data
+
+        ZDA, // UTC and local time
+        DTM, // Datum
 
         TXT  // TXT - Text messages
     }
