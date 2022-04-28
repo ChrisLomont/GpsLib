@@ -275,7 +275,7 @@ $GPGSV,2,2,05,32,,,34,1*67
     }
 
 
-    // VTK - Track made good and ground speed
+    // VTG - Track made good and ground speed
     //          1  2  3  4  5  6  7  8 9
     //          |  |  |  |  |  |  |  | |
     //  $--VTG,x.x,T,x.x,M,x.x,N,x.x,K*hh<CR><LF>
@@ -542,6 +542,4 @@ $GPGSV,2,2,05,32,,,34,1*67
         Manual,
         Simulation
     }
-
-
 }

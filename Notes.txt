@@ -9,7 +9,7 @@ Accuracy of position indicators:
 FAA Mode (NMEA 2.3 and later) - stuff needed by FAA
     A = Autonomous mode - satellite system used in non-differentail mode in opisition fix
     C = Quectel querk "Caution"        
-    D = Differential Mode - satellite used in differential mode in poisition fix
+    D = Differential Mode - satellite used in differential mode in position fix
     E = Estimated (dead-reckoning) mode
     F = RTK Float mode (not as accurate as RTK Integer - approx 6" over 1/2 mile error?)
     M = Manual Input Mode
@@ -22,8 +22,6 @@ FAA Mode (NMEA 2.3 and later) - stuff needed by FAA
 Integer rtk and float RTK refer to the ambiguity in phase during an algorithm - integer means the phase is an integer multiple, which is more precise, and float means non-integer phase resolution.
 
 Date and time in GPS is represented as number of weeks from the start of zero second of 6 January 1980, plus number of seconds into the week. 
-        
-
 
 To get most info for general tracking, several messages are aggregated in this library
 
@@ -54,7 +52,6 @@ VTG message has
 - speed over ground, km/hr
 - FAA Mode
 
-
 GSV - Satellites in view. Come in groups, has 
 - # sats
 - IDs of sats
@@ -75,10 +72,10 @@ Messages relative counts in a sample
 *  40 VTG - track made good - ground speed, course heading, knots, km/hr
 *  40 RMC - recommended min nav info
 
-
-
 FAA Mode
 
+ZDA
+DTM
 
 
 
