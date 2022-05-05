@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 
 namespace Lomont.Gps
 {
@@ -137,7 +138,7 @@ namespace Lomont.Gps
                     return null;
             }
 
-            gnsMessage ??= new GnsMessage();
+            gnsMessage ??= new GnsMessage("Undecoded GNS message");
 
             gnsMessage.Text = text;
             gnsMessage.GnsSystem = gnsSystem;
@@ -238,7 +239,32 @@ namespace Lomont.Gps
         }
 
 
+        /// <summary>
+        /// See if file is a NMEA file
+        /// </summary>
+        /// <param name="filename"></param>
+        /// <returns></returns>
+        public static bool DetectFile(string filename)
+        {
+            if (!File.Exists(filename))
+                return false;
+
+            var lines = File.ReadAllLines(filename);
+            var startOk = lines.Count(s=>s.StartsWith("$"));
+            return lines.Length > 0 && startOk * 10 >= lines.Length * 9; // at least 90% ok
 
 
+            
+            //// try parsing a few
+            //var msgs = new MessageEnumerator(File.ReadAllLines(filename));
+            //int pass = 0;
+            //foreach (var m in msgs)
+            //{
+            //    ++pass;
+            //    if (pass > 5)
+            //        break;
+            //}
+            //return msgs.Successful > 0; // call any matches a success
+        }
     }
 }

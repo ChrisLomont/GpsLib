@@ -13,25 +13,25 @@ namespace Lomont.Gps
     /// </summary>
     public class RtcmMessage : Message
     {
-        public RtcmMessage(byte[] payload, int index, uint checksum)
+        public RtcmMessage(byte[] payload, int index, uint checksum, string description) : base (description)
         {
-            this.payload = payload;
+            this.Payload = payload;
 
             int p1 = payload[0], p2 = payload[1];
-            id = (p1 * 256 + p2) >> 4; // 12 bits
-            this.index = index;
-            this.checksum = checksum;
+            MessageId = (p1 * 256 + p2) >> 4; // 12 bits
+            this.Index = index;
+            this.Checksum = checksum;
         }
 
         // index into stream
-        public int index { get;  }
+        public int Index { get;  }
         // payload bytes
-        public byte[] payload { get;  }
+        public byte[] Payload { get;  }
         // message id
-        public int id { get;  }
+        public int MessageId { get;  }
 
         // checksum
-        public uint checksum { get;  }
+        public uint Checksum { get;  }
 
         public class BitReader
         {
@@ -83,6 +83,7 @@ namespace Lomont.Gps
         }
 
     }
+
     // https://www.geopp.de/pdf/gppigs06_rtcm_f.pdf
     // Data Fields DF001 to DF426
     // DF001: uint12 - 0-4095 - message number 
@@ -198,7 +199,7 @@ namespace Lomont.Gps
 
         public uint CarrSmoothInterval { get;  }
 
-        public RtcmMessage1004(byte[] payload, int index, uint checksum) : base(payload, index, checksum)
+        public RtcmMessage1004(byte[] payload, int index, uint checksum, string description) : base(payload, index, checksum, description)
         { // todo parser in here
             var r = new BitReader(payload);
 
@@ -272,7 +273,7 @@ namespace Lomont.Gps
     }
     class RtcmMessage1006 : RtcmMessage
     {
-        public uint RefId {get; }
+        public uint RefStationId {get; }
 
         public uint Irtf {get; }
 
@@ -300,13 +301,13 @@ namespace Lomont.Gps
 
         public ushort AntennaHeight {get; }
 
-        public RtcmMessage1006(byte[] payload, int index, uint checksum) : base(payload, index, checksum)
+        public RtcmMessage1006(byte[] payload, int index, uint checksum, string description) : base(payload, index, checksum, description)
         { // todo parser in here
 
             var r = new BitReader(payload);
             r.U32(12); // skip header
 
-            RefId = r.U32(12);
+            RefStationId = r.U32(12);
             Irtf = r.U32(6);
             Gps = r.U32(1) > 0;
             Glonass = r.U32(1) > 0;
@@ -324,7 +325,7 @@ namespace Lomont.Gps
     }
     class RtcmMessage1008 : RtcmMessage
     {
-        public RtcmMessage1008(byte[] payload, int index, uint checksum) : base(payload, index, checksum)
+        public RtcmMessage1008(byte[] payload, int index, uint checksum, string description) : base(payload, index, checksum, description)
         {
             var r = new BitReader(payload);
             r.U32(12); // skip header
@@ -337,10 +338,10 @@ namespace Lomont.Gps
             AntennaSerialNumber = r.ReadChars(serialLen);
         }
 
-        public uint RefStationID;
-        public string AntennaDescriptor;
-        public uint AntennaSetupID;
-        public string AntennaSerialNumber;
+        public uint RefStationID { get; }
+        public string AntennaDescriptor { get; }
+        public uint AntennaSetupID { get; }
+        public string AntennaSerialNumber { get; }
 
         /*
 Message Number (“1008”=0011 1111 0000) DF002 uint12 12
@@ -355,7 +356,7 @@ TOTAL 48+8*(M+N)
     }
     class RtcmMessage1012 : RtcmMessage
     {
-        public RtcmMessage1012(byte[] payload, int index, uint checksum) : base(payload, index, checksum)
+        public RtcmMessage1012(byte[] payload, int index, uint checksum, string description) : base(payload, index, checksum, description)
         {
             var r = new BitReader(payload);
             r.U32(12); // skip header
@@ -377,8 +378,12 @@ TOTAL 48+8*(M+N)
 
         }
         // common header for 1009-1012
-        public uint RefStationID,GLONASSEpochTime,NumGLONASSSatellites;
-        public uint SynchronousGNSSFLAG, GLONASSDivergenceFreeSmoothingIndicator, GLONASSSmoothingInterval;
+        public uint RefStationID { get; }
+        public uint GLONASSEpochTime { get; }
+        public uint NumGLONASSSatellites { get; }
+        public uint SynchronousGNSSFLAG { get; }
+        public uint GLONASSDivergenceFreeSmoothingIndicator { get; }
+        public uint GLONASSSmoothingInterval { get; }
 
         // 1012 specific stuff
         public class Satellite
@@ -434,26 +439,29 @@ TOTAL 130
     }
     class RtcmMessage1013 : RtcmMessage
     {
-        public RtcmMessage1013(byte[] payload, int index, uint checksum) : base(payload, index, checksum)
+        public RtcmMessage1013(byte[] payload, int index, uint checksum, string description) : base(payload, index, checksum, description)
         {
             var r = new BitReader(payload);
             r.U32(12); // skip header
 
-            RefID = r.U32(12);
+            RefStationId = r.U32(12);
             Julian = r.U32(16);
             Secs = r.U32(17);
             var num = r.U32(5);
             LeapSecs = r.U32(8);
 
             for (var i =0; i < num; ++i)
-                msgs.Add(new(r));
+                Messages.Add(new(r));
         }
 
-        public uint RefID, Julian, Secs, LeapSecs;
-        public List<Msg> msgs = new();
-        public class Msg
+        public uint RefStationId { get; }
+        public uint Julian { get; }
+        public uint Secs { get; }
+        public uint LeapSecs { get; }
+        public List<Message> Messages { get; } = new();
+        public class Message
         {
-            public Msg(BitReader r)
+            public Message(BitReader r)
             {
                 ID = r.U32(12);
                 Sync = r.U32(1);
@@ -481,7 +489,7 @@ TOTAL 130
     }
     class RtcmMessage1014 : RtcmMessage
     {
-        public RtcmMessage1014(byte[] payload, int index, uint checksum) : base(payload, index, checksum)
+        public RtcmMessage1014(byte[] payload, int index, uint checksum, string description) : base(payload, index, checksum, description)
         { 
             var r = new BitReader(payload);
             r.U32(12); // skip header
@@ -496,14 +504,14 @@ TOTAL 130
             AuxMasterDeltaHeight = r.S32(23);
         }
 
-        public uint NetworkID;
-        public uint SubnetworkID;
-        public uint numStations;
-        public uint MasterRefStationID;
-        public uint AuxRefStationID;
-        public int AuxMasterDeltaLatitude;
-        public int AuxMasterDeltaLongitude;
-        public int AuxMasterDeltaHeight;
+        public uint NetworkID { get; }
+        public uint SubnetworkID { get; }
+        public uint numStations { get; }
+        public uint MasterRefStationID { get; }
+        public uint AuxRefStationID { get; }
+        public int AuxMasterDeltaLatitude { get; }
+        public int AuxMasterDeltaLongitude { get; }
+        public int AuxMasterDeltaHeight { get; }
 
 
         /*
@@ -524,7 +532,13 @@ TOTAL 117
     {
 
         // common header for 1015-1017
-        public uint NetID, SubId, GPSEpoch, MultIndi, RefId, AuxId, NumSats;
+        public uint NetID { get; }
+        public uint SubId { get; }
+        public uint GPSEpoch { get; }
+        public uint MultIndi { get; }
+        public uint RefId { get; }
+        public uint AuxId { get; }
+        public uint NumSats { get; }
 
         public Header1015To1017(RtcmMessage.BitReader r)
         {
@@ -542,7 +556,7 @@ TOTAL 117
 
     class RtcmMessage1015 : RtcmMessage
     {
-        public RtcmMessage1015(byte[] payload, int index, uint checksum) : base(payload, index, checksum)
+        public RtcmMessage1015(byte[] payload, int index, uint checksum, string description) : base(payload, index, checksum, description)
         {
             var r = new BitReader(payload);
             r.U32(12); // skip header
@@ -551,13 +565,13 @@ TOTAL 117
 
             // 1015 specific part
             for (var i  =0; i < header.NumSats; ++i)
-                Sats.Add(new Sat(r));
+                Satellites.Add(new Sat(r));
         }
 
         Header1015To1017 header;
 
         // 1015 part
-        public List<Sat> Sats = new();
+        public List<Sat> Satellites = new();
         public class Sat
         {
             public Sat(BitReader r)
@@ -597,7 +611,7 @@ TOTAL 28
     }
     class RtcmMessage1016 : RtcmMessage
     {
-        public RtcmMessage1016(byte[] payload, int index, uint checksum) : base(payload, index, checksum)
+        public RtcmMessage1016(byte[] payload, int index, uint checksum, string description) : base(payload, index, checksum, description)
         {
 
             var r = new BitReader(payload);
@@ -646,7 +660,7 @@ TOTAL 36
     }
     class RtcmMessage1029 : RtcmMessage
     {
-        public RtcmMessage1029(byte[] payload, int index, uint checksum) : base(payload, index, checksum)
+        public RtcmMessage1029(byte[] payload, int index, uint checksum, string description) : base(payload, index, checksum, description)
         { // todo parser in here
             throw new NotImplementedException();
         }
@@ -672,7 +686,7 @@ TOTAL 72+8*N         */
 
     class RtcmMessage1033 : RtcmMessage
     {
-        public RtcmMessage1033(byte[] payload, int index, uint checksum) : base(payload, index, checksum)
+        public RtcmMessage1033(byte[] payload, int index, uint checksum, string description) : base(payload, index, checksum, description)
         {
             var r = new BitReader(payload);
             r.U32(12); // skip header
@@ -687,8 +701,16 @@ TOTAL 72+8*N         */
 
         }
         
-        public uint RefStationID, AntennaSetupID;
-        public string AntennaDescriptor,AntennaSerialNumber,ReceriverTypeDescriptor,ReceiverFirmwareVersion,ReceiverSerialNumber;
+        public uint RefStationID { get; }
+
+        public uint AntennaSetupID { get; }
+
+        
+        public string AntennaDescriptor { get; }
+        public string AntennaSerialNumber { get; }
+        public string ReceriverTypeDescriptor { get; }
+        public string ReceiverFirmwareVersion { get; }
+        public string ReceiverSerialNumber { get; }
 
     }
 
@@ -715,16 +737,17 @@ TOTAL 72+8*N         */
 
     class RtcmMessage1037 : RtcmMessage
     { // 9.125 + 3.5*Ns bytes
-        public RtcmMessage1037(byte[] payload, int index, uint checksum) : base(payload, index, checksum)
+        public RtcmMessage1037(byte[] payload, int index, uint checksum, string description) : base(payload, index, checksum, description)
         {
             var r = new BitReader(payload);
             r.U32(12); // skip header
 
             header = new Header1037To1039(r);
 
-            if (payload.Length * 8 < (9 * 8 + 1) + 28 * header.NumGLONASSEntries)
+            var neededLength = (9 * 8 + 1) + 28 * header.NumGLONASSEntries;
+            if (payload.Length * 8 < neededLength)
             {
-                Trace.TraceError("error parsing message 1037, packet too small");
+                Trace.TraceError($"Error parsing message 1037 at index {index}, packet {payload.Length*8} bits, too small, min size {neededLength}");
                 return;
             }
 
@@ -779,16 +802,17 @@ TOTAL 28
     }
     class RtcmMessage1038 : RtcmMessage
     { // 9.125 + 4.5*Ns
-        public RtcmMessage1038(byte[] payload, int index, uint checksum) : base(payload, index, checksum)
+        public RtcmMessage1038(byte[] payload, int index, uint checksum, string description) : base(payload, index, checksum, description)
         { // todo parser in here
             var r = new BitReader(payload);
             r.U32(12); // skip header
 
             header = new Header1037To1039(r);
 
-            if (payload.Length * 8 < (9 * 8 + 1) + 36 * header.NumGLONASSEntries)
+            var neededLength = (9 * 8 + 1) + 36 * header.NumGLONASSEntries;
+            if (payload.Length * 8 < neededLength)
             {
-                Trace.TraceError("error parsing message 1038, packet too small");
+                Trace.TraceError($"Error parsing message 1038 at index {index}, packet {payload.Length*8} bits, too small, min size {neededLength}");
                 return;
             }
 
@@ -833,7 +857,7 @@ TOTAL 36         */
     }
     class RtcmMessage1230 : RtcmMessage
     {
-        public RtcmMessage1230(byte[] payload, int index, uint checksum) : base(payload, index, checksum)
+        public RtcmMessage1230(byte[] payload, int index, uint checksum, string description) : base(payload, index, checksum, description)
         { 
             var r = new BitReader(payload);
             r.U32(12); // skip header
@@ -852,13 +876,13 @@ TOTAL 36         */
                 GLONASS_L2_P_CodePhaseBias = r.S32(16);
         }
 
-        public uint RefStationID;
-        public bool GLONASSCodePhaseBias;
-        public uint GLONASSFMDAMask;
-        public int GLONASS_L1_CA_CodePhaseBias;
-        public int GLONASS_L1_P_CodePhaseBias;
-        public int GLONASS_L2_CA_CodePhaseBias;
-        public int GLONASS_L2_P_CodePhaseBias;
+        public uint RefStationID { get; }
+        public bool GLONASSCodePhaseBias { get; }
+        public uint GLONASSFMDAMask { get; }
+        public int GLONASS_L1_CA_CodePhaseBias { get; }
+        public int GLONASS_L1_P_CodePhaseBias { get; }
+        public int GLONASS_L2_CA_CodePhaseBias { get; }
+        public int GLONASS_L2_P_CodePhaseBias { get; }
 
         /*
 Message Number DF002 uint12 12

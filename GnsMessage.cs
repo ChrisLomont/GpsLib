@@ -37,6 +37,9 @@ $GPGSV,2,2,05,32,,,34,1*67
         public GnsSystem GnsSystem = GnsSystem.UNKNOWN;
         public GnsMessageType GnsMessageType = GnsMessageType.UNKNOWN;
 
+        public GnsMessage(string description) : base(description)
+        { }
+
         public virtual bool HasNaN => false;
 
         #region Parsing
@@ -93,6 +96,18 @@ $GPGSV,2,2,05,32,,,34,1*67
             if (v < min || max < v)
                 throw new ArgumentOutOfRangeException($"{text} should be in {min},{max}");
             return v;
+        }
+
+        /// <summary>
+        /// Count digits past decimal point
+        /// </summary>
+        /// <param name="text"></param>
+        /// <returns></returns>
+        public static int DigitsOfAccuracy(string text)
+        {
+            int pos = text.IndexOf('.');
+            if (pos == -1) return 0;
+            return text.Length - pos - 1;
         }
 
         static string FaaText = "ADEFMNPRS";
@@ -193,6 +208,10 @@ $GPGSV,2,2,05,32,,,34,1*67
 
         public Location Position;
 
+        public DtmGnsMessage() : base("Datum Reference")
+        {
+        }
+
         public static bool TryParse(string fieldsText, out DtmGnsMessage message)
         {
             message = null;
@@ -234,6 +253,10 @@ $GPGSV,2,2,05,32,,,34,1*67
         public class ZdaGnsMessage : GnsMessage
     {
         public DateTime Utc; // UTC time
+
+        public ZdaGnsMessage() : base("Time and Date")
+        {
+        }
 
         // 1. UTC time, possible frac subseconds
         // 2. day 01-31
@@ -290,6 +313,10 @@ $GPGSV,2,2,05,32,,,34,1*67
         public double SpeedOverGroundKmPerHour; // 0 to 99
         public FaaMode? FaaMode;
 
+        public VtgGnsMessage() : base("Track made good and ground speed")
+        {
+        }
+
         public static bool TryParse(string fieldsText, out VtgGnsMessage message)
         {
             message = null;
@@ -305,8 +332,8 @@ $GPGSV,2,2,05,32,,,34,1*67
                 {
                     CourseOverGroundDegreesTrue = ParseDouble(words[0]),
                     CourseOverGroundDegreesMagnetic= ParseDouble(words[2]),
-                    SpeedOverGroundKnots= Double.Parse(words[4]),
-                    SpeedOverGroundKmPerHour= Double.Parse(words[6]),
+                    SpeedOverGroundKnots = Double.Parse(words[4]),
+                    SpeedOverGroundKmPerHour = Double.Parse(words[6]),
                     FaaMode = ParseFaaMode(words[8])
                 };
                 // todo - check faa mode in 9
@@ -331,6 +358,14 @@ $GPGSV,2,2,05,32,,,34,1*67
         public DateTime Utc; // UTC time
         public bool Valid; // data was valid or invalid
         public FaaMode? FaaMode;
+        
+        // default lat/lng accuracy is 5 digits, but some chips allow higher
+        // ZED-F9P allows 7 when set to high precision
+        public int DigitsOfAccuracy;
+
+        public GllGnsMessage() : base("Geographic Position - Latitude/Longitude")
+        {
+        }
 
         // "4225.01231,N,08714.72123,W,221440.00,A,D"
 
@@ -347,13 +382,18 @@ $GPGSV,2,2,05,32,,,34,1*67
                 if (words.Length != 7)
                     return false;
 
+
                 message = new GllGnsMessage
                 {
                     position = ParseLatLong(words[0],words[1],words[2],words[3],"0"), // todo - height?
                     Utc = ParseUtc(words[4]),
                     Valid = ParseChar(words[5], "AV") == 'A',
-                    FaaMode = ParseFaaMode(words[6])
-                };
+                    FaaMode = ParseFaaMode(words[6]),
+                    DigitsOfAccuracy = Math.Max(
+                        DigitsOfAccuracy(words[0]),
+                        DigitsOfAccuracy(words[2])
+                        )
+            };
             }
             catch (Exception ex)
             {
@@ -380,6 +420,15 @@ $GPGSV,2,2,05,32,,,34,1*67
         // magnetic variation....
         // E or W
         public FaaMode? FaaMode;
+
+        // default lat/lng accuracy is 5 digits, but some chips allow higher
+        // ZED-F9P allows 7 when set to high precision
+        public int DigitsOfAccuracy;
+
+        public RmcGnsMessage() : base("Recommended Minimum Navigation Information")
+        {
+        }
+
         public static bool TryParse(string fieldsText, out RmcGnsMessage message)
         {
             message = null;
@@ -399,7 +448,12 @@ $GPGSV,2,2,05,32,,,34,1*67
                     groundSpeedKnots = ParseDouble(words[6]),
                     // todo - other fields
                     Date = words[8],
-                    FaaMode = ParseFaaMode(words[11])
+                    FaaMode = ParseFaaMode(words[11]),
+                    DigitsOfAccuracy = Math.Max(
+                        DigitsOfAccuracy(words[2]),
+                        DigitsOfAccuracy(words[4])
+                        )
+
                 };
 
                 // 
@@ -461,6 +515,15 @@ $GPGSV,2,2,05,32,,,34,1*67
         public double dgpsAge; // not valid if DGPS not used
         public int refStationId; // 0000-4095, null when ref ID is selected and no corrections received
 
+        // default lat/lng accuracy is 5 digits, but some chips allow higher
+        // ZED-F9P allows 7 when set to high precision
+        public int DigitsOfAccuracy;
+        public int HeightDigitsOfAccuracy;
+
+        public GgaGnsMessage() : base("Global Positioning System Fix Data")
+        {
+        }
+
         public static bool TryParse(string fieldsText, out GgaGnsMessage message)
         {
             message = null;
@@ -481,15 +544,19 @@ $GPGSV,2,2,05,32,,,34,1*67
                 message = new GgaGnsMessage
                 {
                     Utc = ParseUtc(words[0]),
-                    position = ParseLatLong(words[1],words[2],words[3],words[4], words[8]),
+                    position = ParseLatLong(words[1], words[2], words[3], words[4], words[8]),
                     GpsFixQuality = quality,
-                    SvCount =  ParseInt(words[6]),
+                    SvCount = ParseInt(words[6]),
                     HDOP = ParseDouble(words[7]),
                     orthometricHeight = ParseDouble(words[8]),
-                    geoidSeparation   = ParseDouble(words[10]),
-                    dgpsAge = quality == GpsFixQuality.Differential?ParseDouble(words[12]):0.0,
-                    refStationId = words[13]==""?0:ParseInt(words[13])
-
+                    geoidSeparation = ParseDouble(words[10]),
+                    dgpsAge = quality == GpsFixQuality.Differential ? ParseDouble(words[12]) : 0.0,
+                    refStationId = words[13] == "" ? 0 : ParseInt(words[13]),
+                    DigitsOfAccuracy = Math.Max(
+                        DigitsOfAccuracy(words[1]),
+                        DigitsOfAccuracy(words[3])
+                        ),
+                    HeightDigitsOfAccuracy = DigitsOfAccuracy(words[8])
                     // todo - other fields - lots are useful
                 };
             }

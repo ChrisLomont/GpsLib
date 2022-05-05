@@ -57,7 +57,7 @@ namespace Lomont.Gps {
         #region Implementation
 
         // todo - fix Lomont lib CRC24 - does not match this :(
-        class CRC24
+        public class CRC24
         {
             private static readonly uint[] tbl =
             {
@@ -121,107 +121,138 @@ namespace Lomont.Gps {
         }
 
         // Parse a message, update index
-        static RtcmMessage ParseMessage(ref int index, byte [] data)
+        static RtcmMessage ParseMessage(ref int startIndex, byte [] data)
         {
 
             // message is D3, 6 bits of 0, 10 bits of message length, length bytes, 24 bits checksum
-            if (data.Length <= index + 3) // need to read header at least
+            if (data.Length <= startIndex + 3) // need to read header at least
             {
-                Trace.TraceError("RTCM data too short");
+                Trace.TraceError($"RTCM data too short at offset 0x{startIndex:X8}");
                 return null;
             }
 
-            if (data[index] != Delimiter)
+            if (data[startIndex] != Delimiter)
             {
-                Trace.TraceWarning("RTCM not at header, scanning forward...");
+                Trace.TraceWarning($"RTCM not at header at offset 0x{startIndex:X8}, scanning forward...");
                 // scan to next, return error
-                Scan(ref index, data);
+                Scan(ref startIndex, data);
                 return null;                
             }
             // read 2 bytes for length
-            int b1 = data[index+1], b2 = data[index+2];
+            int b1 = data[startIndex+1], b2 = data[startIndex+2];
             var len = b1*256+b2; 
-            if (1023 < len || data.Length <= index + HeaderLength + len + CrcLength)
+            if (1023 < len || data.Length <= startIndex + HeaderLength + len + CrcLength)
             {   // invalid length, scan to next D3
-                Trace.TraceError("RTCM invalid length header, scanning forward...");
-                Scan(ref index, data);
+                Trace.TraceError($"RTCM invalid length header at offset 0x{startIndex:X8}, scanning forward...");
+                Scan(ref startIndex, data);
                 return null;
             }
 
             // checksum over all bytes except last 3
             // todo - error - fix! var computedCrc = CRC.CRC_24Q(new ReadOnlySpan<byte>(data, index, len+HeaderLength));
-            var computedCrc = CRC24.Compute(new ReadOnlySpan<byte>(data, index, len + HeaderLength));
-            var ci = index+ HeaderLength + len;
+            var computedCrc = CRC24.Compute(new ReadOnlySpan<byte>(data, startIndex, len + HeaderLength));
+            var ci = startIndex+ HeaderLength + len;
             int c1 = data[ci], c2 = data[ci+1], c3 = data[ci+2];
             var readCrc = (uint)(c1*65536+c2*256+c3);
             if (computedCrc != readCrc)
             {
-                Trace.TraceError($"RTCM bad crc header {computedCrc:X3} != {readCrc:X3}, scanning forward...");
+                Trace.TraceError($"RTCM bad crc header {computedCrc:X3} != {readCrc:X3}  at offset 0x{startIndex:X8}, scanning forward...");
                 // skip to next
-                Scan(ref index, data);
+                Scan(ref startIndex, data);
                 return null;
             }
 
 
 
-            index += HeaderLength; // skip header
 
             // copy out payload
             var payload = new byte[len];
-            Array.Copy(data,index,payload,0,len);
+            Array.Copy(data,startIndex + HeaderLength,payload,0,len);
 
             // msg id is 12 bits in payload
             int p1 = payload[0], p2 = payload[1];
             var id = (p1 * 256 + p2) >> 4; // 12 bits
 
-            index += len; // skip message
-            index += CrcLength; // skip checksum QualComm CRC-24Q
-
             RtcmMessage msg;
             switch (id)
             {
+
                 case 1004:
-                    msg = new RtcmMessage1004(payload, index, computedCrc);
+                    msg = new RtcmMessage1004(payload, startIndex, computedCrc, "Extended L1&L2 GPS RTK Observables for GPS RTK Use");
                     break;
                 case 1006:
-                    msg = new RtcmMessage1006(payload, index, computedCrc);
+                    msg = new RtcmMessage1006(payload, startIndex, computedCrc, "Stationary RTK Reference Station ARP plus the Antenna Height");
                     break;
                 case 1008:
-                    msg = new RtcmMessage1008(payload, index, computedCrc);
+                    msg = new RtcmMessage1008(payload, startIndex, computedCrc, "Antenna Descriptor and Serial Number");
                     break;
                 case 1012:
-                    msg = new RtcmMessage1012(payload, index, computedCrc);
+                    msg = new RtcmMessage1012(payload, startIndex, computedCrc, "Extended L1&L2 GLONASS RTK Observables");
                     break;
                 case 1013:
-                    msg = new RtcmMessage1013(payload, index, computedCrc);
+                    msg = new RtcmMessage1013(payload, startIndex, computedCrc, "System Parameters, time offsets, lists of messages sent");
                     break;
                 case 1014:
-                    msg = new RtcmMessage1014(payload, index, computedCrc);
+                    msg = new RtcmMessage1014(payload, startIndex, computedCrc, "Network Auxiliary Station Data");
                     break;
                 case 1015:
-                    msg = new RtcmMessage1015(payload, index, computedCrc);
+                    msg = new RtcmMessage1015(payload, startIndex, computedCrc, "GPS Ionospheric Correction Differences");
                     break;
                 case 1016:
-                    msg = new RtcmMessage1016(payload, index, computedCrc);
+                    msg = new RtcmMessage1016(payload, startIndex, computedCrc, "GPS Geometric Correction Differences");
                     break;
                 case 1033:
-                    msg = new RtcmMessage1033(payload, index, computedCrc);
+                    msg = new RtcmMessage1033(payload, startIndex, computedCrc, "Receiver and Antenna Descriptors");
                     break;
                 case 1037:
-                    msg = new RtcmMessage1037(payload, index, computedCrc);
+                    msg = new RtcmMessage1037(payload, startIndex, computedCrc, "GLONASS Ionospheric Correction Differences");
                     break;
                 case 1038:
-                    msg = new RtcmMessage1038(payload, index, computedCrc);
+                    msg = new RtcmMessage1038(payload, startIndex, computedCrc, "GLONASS Geometric Correction Differences");
                     break;
                 case 1230:
-                    msg = new RtcmMessage1230(payload, index, computedCrc);
+                    msg = new RtcmMessage1230(payload, startIndex, computedCrc, "GLONASS L1 and L2 Code-Phase Biases");
                     break;
                 default:
-                    msg = new RtcmMessage(payload, index, computedCrc);
-                    Trace.TraceWarning($"Unknown RTCM message id {id}");
+                    msg = new RtcmMessage(payload, startIndex, computedCrc, "Undecoded RTCM message type");
+                    Trace.TraceWarning($"Unknown RTCM message id {id} at index {startIndex}");
                     break;
             }
+
+            startIndex += HeaderLength; // skip header
+            startIndex += len; // skip message
+            startIndex += CrcLength; // skip checksum QualComm CRC-24Q
+
             return msg;
+        }
+
+        /// <summary>
+        /// See if file is a RTCM file
+        /// </summary>
+        /// <param name="filename"></param>
+        /// <returns></returns>
+        public static bool DetectFile(string filename)
+        {
+            if (!File.Exists(filename))
+                return false;
+
+            var data = File.ReadAllBytes(filename);
+
+            // try reading a few
+            int successful = 0, failed = 0;
+            var index = 0; // start index
+            while (index < data.Length)
+            {
+                var msg = ParseMessage(ref index, data);
+                if (msg != null)
+                    successful++;
+                else
+                    failed++;
+                if (failed + successful > 5) 
+                    break;
+            }
+
+            return successful > 0; // call any matches a success
         }
         #endregion
     }

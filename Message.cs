@@ -5,5 +5,12 @@
     /// </summary>
     public class Message
     {
+
+        public string Description { get;  }
+        public Message(string description)
+        {
+            Description = description;
+        }
+
     }
 }
