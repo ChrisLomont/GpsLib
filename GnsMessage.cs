@@ -103,7 +103,7 @@ $GPGSV,2,2,05,32,,,34,1*67
         /// </summary>
         /// <param name="text"></param>
         /// <returns></returns>
-        public static int DigitsOfAccuracy(string text)
+        public static int GetDigitsOfAccuracy(string text)
         {
             int pos = text.IndexOf('.');
             if (pos == -1) return 0;
@@ -149,34 +149,6 @@ $GPGSV,2,2,05,32,,,34,1*67
         }
 
 
-
-        #endregion
-
-        #region Types
-        // FAA Mode Indicator
-        // A = Autonomous mode
-        // D = Differential Mode
-        // E = Estimated (dead-reckoning) mode
-        // F = RTK Float mode
-        // M = Manual Input Mode
-        // N = Data Not Valid
-        // P = Precise (4.00 and later)
-        // R = RTK Integer mode
-        // S = Simulated Mode
-        // fields must be empty when no data for it - some GPS units zero these out
-        // Date and time in GPS is represented as number of weeks from the start of zero second of 6 January 1980, plus number of seconds into the week. 
-        public enum FaaMode
-        {
-            Autonomous, // A
-            Differential, // D
-            Estimated, // E dead reckoning
-            RtkFloat, // F
-            Manual, // M
-            NotValid, // N
-            Precise,  // P
-            RtkInteger,  // R
-            Simulated,   // S
-        }
 
         #endregion
     }
@@ -390,8 +362,8 @@ $GPGSV,2,2,05,32,,,34,1*67
                     Valid = ParseChar(words[5], "AV") == 'A',
                     FaaMode = ParseFaaMode(words[6]),
                     DigitsOfAccuracy = Math.Max(
-                        DigitsOfAccuracy(words[0]),
-                        DigitsOfAccuracy(words[2])
+                        GetDigitsOfAccuracy(words[0]),
+                        GetDigitsOfAccuracy(words[2])
                         )
             };
             }
@@ -450,8 +422,8 @@ $GPGSV,2,2,05,32,,,34,1*67
                     Date = words[8],
                     FaaMode = ParseFaaMode(words[11]),
                     DigitsOfAccuracy = Math.Max(
-                        DigitsOfAccuracy(words[2]),
-                        DigitsOfAccuracy(words[4])
+                        GetDigitsOfAccuracy(words[2]),
+                        GetDigitsOfAccuracy(words[4])
                         )
 
                 };
@@ -472,7 +444,8 @@ $GPGSV,2,2,05,32,,,34,1*67
                     var u = message.Utc;
                     message.Utc = new DateTime(
                         year,month,day,
-                        u.Hour, u.Minute, u.Second
+                        u.Hour, u.Minute, u.Second,
+                        u.Millisecond
                         );
                     // Console.WriteLine($"RMC message date: {message.Utc}");
                 }
@@ -553,10 +526,10 @@ $GPGSV,2,2,05,32,,,34,1*67
                     dgpsAge = quality == GpsFixQuality.Differential ? ParseDouble(words[12]) : 0.0,
                     refStationId = words[13] == "" ? 0 : ParseInt(words[13]),
                     DigitsOfAccuracy = Math.Max(
-                        DigitsOfAccuracy(words[1]),
-                        DigitsOfAccuracy(words[3])
+                        GetDigitsOfAccuracy(words[1]),
+                        GetDigitsOfAccuracy(words[3])
                         ),
-                    HeightDigitsOfAccuracy = DigitsOfAccuracy(words[8])
+                    HeightDigitsOfAccuracy = GetDigitsOfAccuracy(words[8])
                     // todo - other fields - lots are useful
                 };
             }
@@ -609,4 +582,34 @@ $GPGSV,2,2,05,32,,,34,1*67
         Manual,
         Simulation
     }
+
+    #region Types
+    // FAA Mode Indicator
+    // A = Autonomous mode
+    // D = Differential Mode
+    // E = Estimated (dead-reckoning) mode
+    // F = RTK Float mode
+    // M = Manual Input Mode
+    // N = Data Not Valid
+    // P = Precise (4.00 and later)
+    // R = RTK Integer mode
+    // S = Simulated Mode
+    // fields must be empty when no data for it - some GPS units zero these out
+    // Date and time in GPS is represented as number of weeks from the start of zero second of 6 January 1980, plus number of seconds into the week. 
+    public enum FaaMode
+    {
+        Autonomous, // A
+        Differential, // D
+        Estimated, // E dead reckoning
+        RtkFloat, // F
+        Manual, // M
+        NotValid, // N
+        Precise,  // P
+        RtkInteger,  // R
+        Simulated,   // S
+    }
+
+    #endregion
+
 }
+

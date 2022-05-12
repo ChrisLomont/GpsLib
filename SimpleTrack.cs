@@ -2,8 +2,12 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using Microsoft.VisualBasic;
 
 // todo
 // - add # satellites used in fix?
@@ -13,8 +17,10 @@ using System.Linq;
 
 namespace Lomont.Gps
 {
-    // keep track of GPS path items of interest
-    // merges info from a few messages to get the best track possible
+    /// <summary>
+    /// keep track of GPS path items of interest
+    /// merges info from a few messages to get the best track possible
+    /// </summary>
     public class SimpleTrack : IEnumerable<SimpleTrack.Node>
     {
 
@@ -27,7 +33,7 @@ namespace Lomont.Gps
         /// <param name="Valid"></param>
         /// <param name="GroundSpeedKnots"></param>
         /// <param name="System"></param>
-        public record Node(Location Position, GnsMessage.FaaMode Mode, DateTime Utc, bool Valid, double GroundSpeedKnots, GnsSystem System);
+        public record Node(Location Position, FaaMode Mode, DateTime Utc, bool Valid, double GroundSpeedKnots, GnsSystem System);
 
 
         /// <summary>
@@ -55,18 +61,13 @@ namespace Lomont.Gps
         public IEnumerator<Node> GetEnumerator()
         {
             /* most common messages, relative frequencies from a sample
-             * 760 GSV - satellites in view
-             * 155 GSA - GPS DOP and active satellites
-             *  40 GLL - geographic position, 
-             *  40 GGA - gps fix data: time, position, fix
-             *  40 VTG - track made good - ground speed, course heading, knots, km/hr
-             *  40 RMC - recommended min nav info
-             *
              *
              * From inspection, example had GLL (last group position),
              * then RMC (with new position),
              * then VTG
              * then GGA (same pos as RMC)
+             *
+             * Read these into local values, export one when enough consistent values read
              *
              * So we read RMC (same info as GLL?) for first check,
              *    then check GGA has same
@@ -74,9 +75,12 @@ namespace Lomont.Gps
              *
              *    as sanity check.
              *
+             * How this works:
+             * 1. gather messages till enough present
+             * 2. if all have consistent info, output a node saying so
+             *
              */
 
-            Node node = null;
             bool differentialPaired = false; // have not yet seen this
             bool differentialMissed = false; // have not yet seen this
 
@@ -84,6 +88,12 @@ namespace Lomont.Gps
             // debug types
             Dictionary<string, int> counts = new();
 #endif
+
+            // message types we aggregate 
+            RmcGnsMessage rmc = null;
+            GgaGnsMessage gga = null;
+            GllGnsMessage gll = null;
+            VtgGnsMessage vtg = null;
 
             foreach (var msg in messages)
             {
@@ -99,82 +109,73 @@ namespace Lomont.Gps
                     counts.Add(name, 0);
                 counts[name]++;
 #endif
+                // set each if possible cast
+                if (msg is RmcGnsMessage m1)
+                    rmc = m1;
+                if (msg is GgaGnsMessage m2)
+                    gga = m2;
+                else if (msg is GllGnsMessage m3)
+                    gll = m3;
+                else if (msg is VtgGnsMessage m4)
+                    vtg = m4;
 
-                if (msg is RmcGnsMessage rmc)
+
+                if (rmc != null && gga != null && gll != null && vtg != null)
                 {
-                    // RMC has no height info.... get from other message soon
-                    Trace.Assert(rmc.FaaMode.HasValue); // todo - test? what if happens? ignore?
-                    if (node != null)
-                        yield return node;
+                    if (CompareLocations(gga.position,rmc.position) && CompareLocations(gga.position, gll.position))
+                    { // candidate for message sync, check all fields
 
-                    node =
-                        new(rmc.position, rmc.FaaMode.Value, rmc.Utc, rmc.Valid, rmc.groundSpeedKnots,
-                        GnsSystem.UNKNOWN);
-                }
-                else if (msg is GgaGnsMessage gga)
-                {
-                    // GGA does not have year, month, day, field
-                    if (node != null)
-                    {
-                        // RMC,hhmmss.ss
-                        // GGA,hhmmss.ss
-                        var n = node;
-                        Check1(gga.position, n.Position, false);
-                        Check2(gga.Utc, n.Utc, false);
-                        Check4(gga.GpsFixQuality, n.Mode);
-
-                        // geoid separation varies by location on earth, often around -34m in usa
-                        //Trace.WriteLine($"Geoid: {gga.geoidSeparation} and Ortho: {gga.orthometricHeight}");
-
-                        // put in height
-                        node = n with { Position = new Location(n.Position.Latitude, n.Position.Longitude, gga.position.Height) };
-
-                    }
-                    //gga.position;
-                    //gga.Utc;
-                    //gga.GpsFixQuality;
-                    //gga.SvCount;
-                    //gga.HDOP;
-                    //gga.orthometricHeight;
-                    //gga.geoidSeparation;
-                    //gga.dgpsAge;
-                    //gga.refStationId;
-                }
-                else if (msg is GllGnsMessage gll)
-                {
-                    // GLL does not have year, month, day, field
-
-                    if (node != null)
-                    {
-                        var n = node;
-                        Check1(gll.position, n.Position, false);
-                        Check2(gll.Utc, n.Utc, false);
-                        Check3(gll.Valid, n.Valid);
+                        var success = true;
+                        Trace.Assert(rmc.FaaMode.HasValue);
                         Trace.Assert(gll.FaaMode.HasValue);
-                        Check5(gll.FaaMode.Value, n.Mode, "GLL");
-
-                        node = n with { System = gll.GnsSystem };
-
-                    }
-
-                    //g.position;
-                    //g.FaaMode; // todo - describe
-                    //g.Utc;
-                    //g.Valid;
-                    //g.GnsSystem; // 
-                }
-                else if (msg is VtgGnsMessage vtg)
-                {
-                    if (node != null)
-                    {
-                        var n = node;
                         Trace.Assert(vtg.FaaMode.HasValue);
-                        Check5(vtg.FaaMode.Value, n.Mode, "VTG");
-                        Check6(vtg.SpeedOverGroundKnots, n.GroundSpeedKnots);
-                    }
+                        success &= PrintOnFail(CompareDouble(rmc.groundSpeedKnots, vtg.SpeedOverGroundKnots),$"Inconsistent knots");
+                        success &= PrintOnFail(CompareTime(rmc.Utc, gga.Utc),$"Inconsistent time RMC {rmc.Utc.ToString("yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fff'Z'")} to GGA {gga.Utc.ToString("yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fff'Z'")}");
+                        success &= PrintOnFail(CompareTime(rmc.Utc, gll.Utc), $"Inconsistent time RMC {rmc.Utc.ToString("yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fff'Z'")} to GLL {gga.Utc.ToString("yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fff'Z'")}");
+                        success &= PrintOnFail(CompareBool(rmc.Valid, gll.Valid),$"Inconsistent validity");
+                        
+                        // vtg and gll always seem to have Differential on the ZED-F9P
+                        //success &= PrintOnFail(CompareFaaModes(rmc.FaaMode.Value, gll.FaaMode.Value, "GLL"),$"Inconsistent FAA Mode RMC {rmc.FaaMode.Value} GLL {gll.FaaMode.Value}");
+                        //success &= PrintOnFail(CompareFaaModes(rmc.FaaMode.Value, vtg.FaaMode.Value,"VTG"), $"Inconsistent FAA Mode RMC {rmc.FaaMode.Value} VTG {vtg.FaaMode.Value}");
 
-                    // for some reason, the ratio of speeds is slightly different
-                    //Trace.WriteLine($"VTG {vtg.SpeedOverGroundKnots/vtg.SpeedOverGroundKmPerHour}");
+                        success &= PrintOnFail(CompareDouble(rmc.groundSpeedKnots, vtg.SpeedOverGroundKnots),$"Inconsistent knots");
+
+                        Check4(gga.GpsFixQuality, rmc.FaaMode.Value);
+
+                        // Notes:
+                        // VTG FAA Mode almost never matches for some reason
+                        // VTG ratio of speed over ground knots and KmPerHour has varying ratio for some reason
+                        // GLL does not have year, month, day, field
+                        // GGA does not have year, month, day, field
+                        // GGA geoid separation varies by location on earth, often around -34m in usa
+                        // Trace.WriteLine($"Geoid: {gga.geoidSeparation} and Ortho: {gga.orthometricHeight}");
+
+                        if (success)
+                        {  // output a node
+                            yield return new Node(
+                                gga.position, // Note: RMC does not have height
+                                rmc.FaaMode.Value, rmc.Utc, rmc.Valid,
+                                vtg.SpeedOverGroundKnots, 
+                                rmc.GnsSystem
+                                );
+
+                            // reset all
+                            rmc = null;
+                            gll = null;
+                            gga = null;
+                            vtg = null;
+                        }
+                        else
+                        {
+                            Trace.TraceError($"Message inconsistency");
+                        }
+
+                        bool PrintOnFail(bool val, string msg)
+                        {
+                            if (!val) Trace.TraceError(msg);
+                            return val;
+                        }
+                    }
 
                 }
             }
@@ -186,11 +187,6 @@ namespace Lomont.Gps
                 Trace.WriteLine($"  {p.Value}: {p.Key}");
             }
 #endif
-            // todo - sanity check, remove missing items, check all fields make sense
-            if (node != null)
-                yield return node; // last node
-
-            node = null;
 
             //foreach (var p in Nodes)
             //{
@@ -198,18 +194,20 @@ namespace Lomont.Gps
             //        Trace.WriteLine(p.Position.Height);
             //}
             
-            #region Helpers
+#region Helpers
 
-            void Check1(Location l1, Location l2, bool compareHeight = true)
+            bool CompareLocations(Location l1, Location l2)
             {
                 var d = l1.ToVec3() - l2.ToVec3();
-                if (!compareHeight)
-                    d.Z = 0;
-                Trace.Assert(d.LengthSquared == 0);
+                //if (!compareHeight)
+                    d.Z = 0; // assume not checking height
+                //Trace.Assert(d.LengthSquared == 0);
+                return d.LengthSquared == 0;
             }
 
-            void Check2(DateTime t1, DateTime t2, bool useDate = true)
+            bool CompareTime(DateTime t1, DateTime t2)
             {
+                var useDate = false;
                 if (!useDate)
                 {
                     t1 = t1.AddYears(t2.Year - t1.Year);
@@ -218,55 +216,62 @@ namespace Lomont.Gps
                 }
 
                 var d = t1 - t2;
-                Trace.Assert(d.Ticks == 0);
+                //Trace.Assert(d.Ticks == 0);
+                return d.Ticks == 0;
             }
-            void Check3(bool b1, bool b2)
+            bool CompareBool(bool b1, bool b2)
             {
                 Trace.Assert(b1 == b2);
+                return b1 == b2;
             }
             
-            void Check4(GpsFixQuality t2, GnsMessage.FaaMode t1)
+            void Check4(GpsFixQuality t2, FaaMode t1)
             {
                 if (
-                    (t1 == GnsMessage.FaaMode.Estimated && t2 == GpsFixQuality.Estimated) ||
-                    (t1 == GnsMessage.FaaMode.Differential && t2 == GpsFixQuality.Differential) ||
-                    (t1 == GnsMessage.FaaMode.RtkInteger && t2 == GpsFixQuality.RealTimeKinematic) ||
-                    (t1 == GnsMessage.FaaMode.RtkFloat && t2 == GpsFixQuality.FloatRTK)
+                    (t1 == FaaMode.Estimated && t2 == GpsFixQuality.Estimated) ||
+                    (t1 == FaaMode.Differential && t2 == GpsFixQuality.Differential) ||
+                    (t1 == FaaMode.RtkInteger && t2 == GpsFixQuality.RealTimeKinematic) ||
+                    (t1 == FaaMode.RtkFloat && t2 == GpsFixQuality.FloatRTK)
                     )
                 {
                     return;
                 }
-                Trace.Assert(false, $"FAA modes {t1} and {t2} not compared");
+                Trace.TraceWarning($"FAA modes {t1} and {t2} not compared");
             }
 
-            void Check5(GnsMessage.FaaMode t1, GnsMessage.FaaMode t2, string msgType)
+            bool CompareFaaModes(FaaMode t1, FaaMode t2, string msgType)
             {
-                if (t1 == GnsMessage.FaaMode.Differential && t2 == GnsMessage.FaaMode.Differential && !differentialPaired)
+                if (t1 == FaaMode.Differential && t2 == FaaMode.Differential && !differentialPaired)
                 {
-                    Trace.WriteLine("Double differential seen");
+                    Trace.WriteLine("GPS double differential seen");
                     differentialPaired = true;
+                    return false;
                 }
 
                 if (t1 != t2)
                 {
                     //Trace.Assert(t1 == t2);
                     // get differential compared to rtk float and rtk integer sometimes
-                    if (!differentialMissed || (t1 != GnsMessage.FaaMode.Differential && t2 != GnsMessage.FaaMode.Differential))
+                    if (!differentialMissed || (t1 != FaaMode.Differential && t2 != FaaMode.Differential))
                     {
                         Trace.TraceWarning($"mismatched GPS type {t1} != {t2} from msg {msgType}");
                     }
 
-                    if (t1 == GnsMessage.FaaMode.Differential || t2 == GnsMessage.FaaMode.Differential)
+                    if (t1 == FaaMode.Differential || t2 == FaaMode.Differential)
                         differentialMissed = true;
+                    return false;
                 }
+
+                return true;
             }
 
             // check doubles are bitwise exact
-            void Check6(double v1, double v2)
+            bool CompareDouble(double v1, double v2)
             {
                 Trace.Assert(v1 == v2); // check bitwise!
+                return v1 == v2;
             }
-            #endregion
+#endregion
         }
 
         IEnumerator IEnumerable.GetEnumerator()
